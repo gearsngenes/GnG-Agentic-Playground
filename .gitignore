@@ -1,0 +1,7 @@
+.env
+_agent_configs.json
+.cache/
+.venv/
+.idea/
+uploads/
+conversations/

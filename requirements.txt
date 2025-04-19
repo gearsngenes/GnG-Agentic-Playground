@@ -1,0 +1,14 @@
+flask
+pyautogen
+python-dotenv
+openai
+# Document handling libraries
+PyPDF2
+python-docx
+python-pptx
+#Pinecone
+pinecone
+google
+google-auth
+google-api-core
+grpcio

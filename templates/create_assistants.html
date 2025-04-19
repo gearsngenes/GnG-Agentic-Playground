@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Create New Assistant</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+
+<h1>Create New Assistant</h1>
+<div>
+  <button onclick="window.location.href='/manage'">Back to Manage Assistants</button>
+</div>
+
+<p>Select a pattern to define the type of agent you want to create:</p>
+<label for="patternSelect">Agentic Pattern:</label>
+<select id="patternSelect" onchange="loadPatternFields()">
+  <option value="">-- Select a pattern --</option>
+  <option value="specialist">Subject Matter Expert (SME)</option>
+  <option value="maker_checker">Maker-Checker</option>
+  <option value="chain_of_thought">Chain of Thought (CoT)</option>
+  <option value="general">General</option>
+</select>
+
+<div id="patternFormContainer" style="margin-top: 20px;"></div>
+
+<script>
+  function loadPatternFields() {
+    const selected = document.getElementById("patternSelect").value;
+    const container = document.getElementById("patternFormContainer");
+    container.innerHTML = "";
+
+    if (selected === "specialist") {
+      container.innerHTML = `
+        <label><strong>Assistant Name:</strong></label><br>
+        <input type="text" id="specialistName" placeholder="e.g., chem_sme" /><br><br>
+
+        <label><strong>Model:</strong></label><br>
+        <select id="specialistModel">
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gpt-4">gpt-4</option>
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+        </select><br><br>
+
+        <label><strong>Knowledge Base:</strong></label><br>
+        <select id="specialistTopic"></select><br><br>
+
+        <label><strong>Audience–Interaction Pairs:</strong></label><br>
+        <div id="audienceInteractionList"></div>
+        <button type="button" onclick="addAudienceInteraction()">Add Audience</button><br><br>
+
+        <button onclick="submitSpecialist()">Create Assistant</button>
+      `;
+
+      fetch('/list_indexes')
+        .then(res => res.json())
+        .then(indexes => {
+          const topicSelect = document.getElementById("specialistTopic");
+          topicSelect.innerHTML = indexes.map(i => `<option value="${i}">${i}</option>`).join("");
+        });
+
+      addAudienceInteraction();
+    }
+
+    if (selected === "general") {
+      container.innerHTML = `
+        <label><strong>Assistant Name:</strong></label><br>
+        <input type="text" id="generalName" placeholder="e.g., helper_bot" /><br><br>
+
+        <label><strong>Model:</strong></label><br>
+        <select id="generalModel">
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gpt-4">gpt-4</option>
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+        </select><br><br>
+
+        <label><strong>Description:</strong></label><br>
+        <textarea id="generalDescription" placeholder="Short description of the assistant..."></textarea><br><br>
+
+        <label><strong>System Message:</strong></label><br>
+        <textarea id="generalSystemMessage" placeholder="Enter the assistant system message..."></textarea><br><br>
+
+        <button onclick="submitGeneral()">Create Assistant</button>
+      `;
+    }
+
+    if (selected === "maker_checker") {
+      container.innerHTML = `
+        <label><strong>Shared Name:</strong></label><br>
+        <input type="text" id="sharedName" placeholder="e.g., short_story_pair" /><br><br>
+
+        <label><strong>Model:</strong></label><br>
+        <select id="makerCheckerModel">
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gpt-4">gpt-4</option>
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+        </select><br><br>
+
+        <label><strong>Writing Scope:</strong></label><br>
+        <textarea id="writingScope" placeholder="e.g., writing short stories about mythical creatures..."></textarea><br><br>
+
+        <div style="display: flex; gap: 40px; align-items: flex-start;">
+          <div>
+            <h4>Maker Rules</h4>
+            <div id="makerRulesList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            <button type="button" onclick="addMakerRule()">Add Rule</button>
+          </div>
+          <div>
+            <h4>Checker Criteria</h4>
+            <div id="checkerCriteriaList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            <button type="button" onclick="addCheckerCriterion()">Add Criterion</button>
+          </div>
+        </div><br>
+
+        <button onclick="submitMakerChecker()">Create Assistant</button>
+      `;
+
+      addMakerRule();
+      addCheckerCriterion();
+    }
+    if (selected === "chain_of_thought") {
+      container.innerHTML = `
+        <label><strong>Agent Name:</strong></label><br>
+        <input type="text" id="cotName" placeholder="e.g., geometry_solver" /><br><br>
+
+        <label><strong>Model:</strong></label><br>
+        <select id="cotModel">
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gpt-4">gpt-4</option>
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+        </select><br><br>
+
+        <label><strong>Scope of Reasoning:</strong></label><br>
+        <textarea id="cotScope" placeholder="Describe what kinds of tasks this reasoning applies to..."></textarea><br><br>
+
+        <h4>Chain of Thought Steps</h4>
+        <div id="cotStepsList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        <button type="button" onclick="addCoTStep()">Add Step</button><br><br>
+
+        <button onclick="submitCoT()">Create Assistant</button>
+      `;
+
+      addCoTStep();
+    }
+  }
+  function addCoTStep(content = "") {
+    const container = document.getElementById("cotStepsList");
+
+    const stepArea = document.createElement("textarea");
+    stepArea.className = "cotStep";
+    stepArea.placeholder = "Describe a reasoning step...";
+    stepArea.style.resize = "vertical";
+    stepArea.value = content;
+
+    // Add another step input when last one is filled
+    stepArea.addEventListener("input", () => {
+      if (stepArea.value.trim() !== "" && container.lastChild === stepArea) {
+        addCoTStep();
+      }
+    });
+
+    container.appendChild(stepArea);
+  }
+  async function submitCoT() {
+    const name = document.getElementById("cotName").value.trim();
+    const model = document.getElementById("cotModel").value.trim();
+    const scope = document.getElementById("cotScope").value.trim();
+
+    const steps = Array.from(document.getElementsByClassName("cotStep"))
+      .map(s => s.value.trim())
+      .filter(s => s !== "");
+
+    if (!name || !scope || steps.length === 0) {
+      alert("Please complete all required fields.");
+      return;
+    }
+
+    const payload = {
+      pattern: "chain_of_thought",
+      name,
+      model,
+      role: scope,
+      thought_chain: steps
+    };
+
+    const res = await fetch("/agent_create", {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    alert(result.message || "Agent created.");
+  }
+  function addMakerRule(content = "") {
+    const container = document.getElementById("makerRulesList");
+    const ruleBox = document.createElement("textarea");
+    ruleBox.className = "makerRule";
+    ruleBox.placeholder = "Maker rule...";
+    ruleBox.value = content;
+    container.appendChild(ruleBox);
+  }
+
+  function addCheckerCriterion(content = "") {
+    const container = document.getElementById("checkerCriteriaList");
+    const criterionBox = document.createElement("textarea");
+    criterionBox.className = "checkerCriteria";
+    criterionBox.placeholder = "Checker evaluation criterion...";
+    criterionBox.value = content;
+    container.appendChild(criterionBox);
+  }
+  async function submitMakerChecker() {
+    const name = document.getElementById("sharedName").value.trim();
+    const model = document.getElementById("makerCheckerModel").value.trim();
+    const scope = document.getElementById("writingScope").value.trim();
+
+    const makerRules = Array.from(document.getElementsByClassName("makerRule")).map(r => r.value.trim()).filter(Boolean);
+    const checkerCriteria = Array.from(document.getElementsByClassName("checkerCriteria")).map(r => r.value.trim()).filter(Boolean);
+
+    const payload = {
+      pattern: "maker_checker",
+      base_name: name,
+      model,
+      scope,
+      maker_rules: makerRules,
+      checker_criteria: checkerCriteria
+    };
+
+    const res = await fetch("/agent_create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+  const result = await res.json();
+  alert(result.message || "Maker-Checker created.");
+}
+
+
+  function addAudienceInteraction(audience = "", interaction = "") {
+    const container = document.getElementById("audienceInteractionList");
+
+    const wrapper = document.createElement("div");
+    wrapper.style.marginBottom = "10px";
+    wrapper.style.display = "flex";
+    wrapper.style.flexDirection = "column";
+    wrapper.style.gap = "4px";
+
+    const audienceInput = document.createElement("input");
+    audienceInput.type = "text";
+    audienceInput.className = "audienceInput";
+    audienceInput.placeholder = "Audience";
+    audienceInput.value = audience;
+
+    const interactionArea = document.createElement("textarea");
+    interactionArea.className = "interactionInput";
+    interactionArea.placeholder = "Types of questions or requests this audience may ask...";
+    interactionArea.style.resize = "vertical";
+    interactionArea.value = interaction;
+
+    wrapper.appendChild(audienceInput);
+    wrapper.appendChild(interactionArea);
+    container.appendChild(wrapper);
+  }
+
+
+  async function submitSpecialist() {
+    const name = document.getElementById("specialistName").value.trim();
+    const model = document.getElementById("specialistModel").value.trim();
+    const topic = document.getElementById("specialistTopic").value.trim();
+
+    const audiences = Array.from(document.getElementsByClassName("audienceInput")).map(e => e.value.trim());
+    const interactions = Array.from(document.getElementsByClassName("interactionInput")).map(e => e.value.trim());
+
+    const audience_interactions = audiences.map((a, i) => ({ audience: a, interaction: interactions[i] }));
+
+    const payload = {
+      pattern: "specialist",
+      name,
+      model,
+      topic,
+      audience_interactions
+    };
+
+    const res = await fetch('/agent_create', {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    alert(result.message || "Agent created.");
+  }
+
+  async function submitGeneral() {
+    const payload = {
+      pattern: "general",
+      name: document.getElementById("generalName").value.trim(),
+      model: document.getElementById("generalModel").value.trim(),
+      description: document.getElementById("generalDescription").value.trim(),
+      system_message: document.getElementById("generalSystemMessage").value.trim()
+    };
+
+    const res = await fetch('/agent_create', {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    alert(result.message || "Agent created.");
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GnG Agentic Chat</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+    }
+
+    .chatbox {
+      border: 1px solid #ccc;
+      height: 400px;
+      overflow-y: scroll;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #f9f9f9;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .bubble {
+      margin: 5px;
+      padding: 10px;
+      border-radius: 10px;
+      max-width: 70%;
+      word-wrap: break-word;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .user {
+      background: #d0e7ff;
+      align-self: flex-end;
+    }
+
+    .assistant {
+      background: #d4f8d4;
+      align-self: flex-start;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+<h1>GnG Agentic Playground Chat Room</h1>
+
+<div>
+  <button id="manageBtn" onclick="window.location.href='/manage'">Manage Assistants</button>
+  <button onclick="window.location.href='/vectorstore'">Manage Knowledge Bases</button>
+</div>
+
+<p></p>
+
+<label>Task: <input type="text" id="taskInput" size="50" oninput="toggleStartButton()" /></label>
+<button id="startBtn" onclick="startConversation()" disabled>Start Conversation</button>
+
+<div class="chatbox" id="chat"></div>
+
+<input type="text" id="userInput" size="60" placeholder="Type your message..." />
+<button id="continueBtn" onclick="continueChat()" disabled>Continue</button>
+<button id="finishBtn" onclick="finishConversation()" disabled>Finish</button>
+<button id="downloadBtn" style="display:none;" onclick="downloadChat()">Download Chat</button>
+
+<script>
+  let finished = false;
+  let filePath = null;
+
+  function toggleStartButton() {
+    const taskText = document.getElementById("taskInput").value.trim();
+    document.getElementById("startBtn").disabled = taskText === "";
+  }
+
+  function enableInteractionButtons() {
+    document.getElementById("continueBtn").disabled = false;
+    document.getElementById("finishBtn").disabled = false;
+  }
+
+  function disableInteractionButtons() {
+    document.getElementById("continueBtn").disabled = true;
+    document.getElementById("finishBtn").disabled = true;
+  }
+
+  function addMessage(msg) {
+    const div = document.createElement('div');
+    div.className = 'message';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+
+    if (msg.role === "user") {
+      bubble.classList.add("user");
+    } else if (msg.role === "assistant") {
+      bubble.classList.add("assistant");
+    }
+
+    if (msg.role === "assistant" && msg.speaker) {
+      const nameTag = document.createElement('div');
+      nameTag.style.fontWeight = 'bold';
+      nameTag.style.marginBottom = '5px';
+      nameTag.textContent = msg.speaker;
+      bubble.appendChild(nameTag);
+    }
+
+    const contentDiv = document.createElement('div');
+    contentDiv.innerHTML = marked.parse(msg.content);
+    bubble.appendChild(contentDiv);
+
+    div.appendChild(bubble);
+    document.getElementById("chat").appendChild(div);
+    document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
+  }
+
+  function refreshChat(messages) {
+    document.getElementById("chat").innerHTML = '';
+    messages.forEach(addMessage);
+  }
+
+  function startConversation() {
+    const task = document.getElementById("taskInput").value.trim();
+    if (!task) return;
+
+    document.getElementById("startBtn").disabled = true;
+    document.getElementById("manageBtn").disabled = true;
+
+    fetch('/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task })
+    }).then(res => res.json()).then(data => {
+      document.getElementById("taskInput").disabled = true;
+      document.getElementById("downloadBtn").style.display = "none";
+      refreshChat(data.messages);
+      finished = false;
+      filePath = null;
+      window.currentStatus = "CONTINUE";
+      enableInteractionButtons();
+    });
+  }
+
+  function continueChat() {
+    const inputField = document.getElementById("userInput");
+    const userInput = inputField.value.trim();
+
+    if (window.currentStatus === "REQUEST" && userInput === "") {
+      alert("This step requires a user response. Please enter your message.");
+      return;
+    }
+
+    document.getElementById("continueBtn").disabled = true;
+
+    fetch('/step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: userInput })
+    }).then(res => res.json()).then(data => {
+      refreshChat(data.messages);
+      finished = data.done;
+      inputField.value = '';
+
+      if (data.auto_finish) {
+        filePath = data.file;
+        document.getElementById("downloadBtn").style.display = "inline";
+
+        document.getElementById("continueBtn").disabled = true;
+        document.getElementById("finishBtn").disabled = true;
+
+        const finalMsg = {
+          role: "assistant",
+          content: "_The agents have concluded the conversation._"
+        };
+        addMessage(finalMsg);
+      } else {
+        document.getElementById("continueBtn").disabled = false;
+      }
+
+      if (data.require_user) {
+        window.currentStatus = "REQUEST";
+      } else {
+        window.currentStatus = "CONTINUE";
+      }
+    });
+  }
+
+  function finishConversation() {
+    fetch('/finish', { method: 'POST' })
+      .then(res => res.json()).then(data => {
+        filePath = data.file;
+        document.getElementById("downloadBtn").style.display = "inline";
+      });
+  }
+
+  function downloadChat() {
+    if (filePath) {
+      window.location.href = `/download?file=${encodeURIComponent(filePath)}`;
+      document.getElementById("downloadBtn").style.display = "none";
+      document.getElementById("taskInput").value = "";
+      document.getElementById("taskInput").disabled = false;
+      document.getElementById("startBtn").disabled = true;
+      document.getElementById("manageBtn").disabled = false;
+      disableInteractionButtons();
+      document.getElementById("chat").innerHTML = '';
+      filePath = null;
+      finished = false;
+    }
+  }
+
+  window.onload = () => {
+    toggleStartButton();
+    disableInteractionButtons();
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Vectorstore</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+          font-family: sans-serif;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 10px;
+        }
+        textarea, input[type="text"], input[type="number"], select {
+          width: 60%;
+          padding: 5px;
+          margin-bottom: 10px;
+        }
+        button {
+          padding: 5px 10px;
+          margin: 5px 5px 5px 0;
+          font-size: 14px;
+        }
+        .file-item {
+          margin: 3px 0;
+        }
+        ul {
+          list-style: none;
+          padding-left: 0;
+        }
+    </style>
+</head>
+<body>
+<h1>Knowledge Base Management</h1>
+
+<div>
+    <button onclick="window.location.href='/'">Home</button>
+</div>
+
+<h2>Create New Knowledge Base</h2>
+<label>Knowledge Base Name: kb-</label>
+<input type="text" id="newIndexName" placeholder="e.g., biology-notes"><br>
+<label>Description:</label><br>
+<textarea id="newIndexDesc" placeholder="Description for the index..."></textarea><br>
+<button onclick="createIndex()">Create</button>
+
+<hr>
+
+<h2>Manage Existing Knowledge Base</h2>
+<select id="indexSelect" onchange="loadIndexDetails()">
+    <option disabled selected>Select an index...</option>
+</select><br>
+
+<label>Description:</label><br>
+<textarea id="editIndexDesc" disabled></textarea><br>
+<button onclick="updateDescription()" id="descBtn" disabled>Update Description</button>
+
+<h3>Upload File</h3>
+<input type="file" id="fileInput"><br>
+<textarea id="imageDesc" placeholder="Image description (if image)" style="display:none;"></textarea><br>
+<button onclick="uploadFile()">Upload</button>
+
+<h3>Uploaded Files</h3>
+<ul id="fileList"></ul>
+
+<label>Chunk Size:</label><br>
+<input type="number" id="chunkSize" value="500"><br>
+
+<button onclick="embedFiles()">Embed Selected</button>
+<button onclick="unembedFiles()">Unembed Selected</button>
+<button onclick="deleteFiles()">Delete Selected</button>
+
+<h3>Delete Knowledge Base</h3>
+<button onclick="deleteIndex()">Delete Index</button>
+
+<script>
+    $(document).ready(() => {
+        refreshIndexes();
+
+        $('#fileInput').on('change', function () {
+            const file = this.files[0];
+            const isImage = /\.(jpg|jpeg|png)$/i.test(file.name);
+            $('#imageDesc').toggle(isImage);
+        });
+    });
+
+    function refreshIndexes() {
+        $.get('/list_indexes', data => {
+            const select = $('#indexSelect');
+            select.empty().append('<option disabled selected>Select an index...</option>');
+            data.forEach(name => {
+                select.append(`<option value="${name}">${name}</option>`);
+            });
+        });
+    }
+
+    function createIndex() {
+        const name = "kb-" + $('#newIndexName').val().trim();
+        const desc = $('#newIndexDesc').val().trim();
+        $.ajax({
+            url: '/create_index',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: name, description: desc }),
+            success: data => {
+                alert(data.message);
+                location.reload();
+            }
+        });
+    }
+
+    function loadIndexDetails() {
+        const index = $('#indexSelect').val();
+        $('#editIndexDesc').prop('disabled', false);
+        $('#descBtn').prop('disabled', false);
+        $.ajax({
+            url: '/get_index_description',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: index }),
+            success: data => {
+                $('#editIndexDesc').val(data.description);
+                loadFileList();
+            }
+        });
+    }
+
+    function updateDescription() {
+        const index = $('#indexSelect').val();
+        const desc = $('#editIndexDesc').val();
+        $.ajax({
+            url: '/update_index_description',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: index, description: desc }),
+            success: data => alert(data.message)
+        });
+    }
+
+    function uploadFile() {
+        const index = $('#indexSelect').val();
+        const file = $('#fileInput')[0].files[0];
+        const formData = new FormData();
+        formData.append('index_name', index);
+        formData.append('file', file);
+        formData.append('image_description', $('#imageDesc').val());
+
+        $.ajax({
+            url: '/upload_document',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: data => {
+                alert(data.message);
+                loadFileList();
+            }
+        });
+    }
+
+    function loadFileList() {
+        const index = $('#indexSelect').val();
+        $.ajax({
+            url: '/list_uploaded_files',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: index }),
+            success: data => {
+                const list = $('#fileList');
+                list.empty();
+                data.files.forEach(file => {
+                    const status = file.embedded ? '✅' : '❌';
+                    list.append(`<li class="file-item"><input type="checkbox" value="${file.name}"> ${file.name} [Embedded? ${status}]</li>`);
+                });
+            }
+        });
+    }
+
+    function getSelectedFiles() {
+        return $('#fileList input[type="checkbox"]:checked').map(function () {
+            return this.value;
+        }).get();
+    }
+
+    function embedFiles() {
+        const index = $('#indexSelect').val();
+        const files = getSelectedFiles();
+        const chunkSize = parseInt($('#chunkSize').val());
+        $.ajax({
+            url: '/embed_files',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: index, files: files, chunk_size: chunkSize }),
+            success: data => {
+                alert(data.message);
+                loadFileList();
+            }
+        });
+    }
+
+    function unembedFiles() {
+        const index = $('#indexSelect').val();
+        const files = getSelectedFiles();
+        $.ajax({
+            url: '/unembed_files',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: index, files: files }),
+            success: data => {
+                alert(data.message);
+                loadFileList();
+            }
+        });
+    }
+
+    function deleteFiles() {
+        const index = $('#indexSelect').val();
+        const files = getSelectedFiles();
+        $.ajax({
+            url: '/delete_files',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: index, files: files }),
+            success: data => {
+                alert(data.message);
+                loadFileList();
+            }
+        });
+    }
+
+    function deleteIndex() {
+        const index = $('#indexSelect').val();
+        if (!index || !confirm(`Are you sure you want to delete index '${index}'?`)) return;
+        $.ajax({
+            url: '/delete_index',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ index_name: index }),
+            success: data => {
+                alert(data.message);
+                location.reload();
+            }
+        });
+    }
+</script>
+</body>
+</html>

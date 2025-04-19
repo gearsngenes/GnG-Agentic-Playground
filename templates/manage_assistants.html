@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Manage Assistants</title>
+    <style>
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            resize: vertical;
+            margin-bottom: 10px;
+        }
+        select, button {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+<h1>Manage Assistant Agents</h1>
+<div>
+    <button onclick="window.location.href='/'">Home</button>
+    <button onclick="window.location.href='/creator'">Create Assistants</button>
+</div>
+
+<p></p>
+
+<label for="agentSelect">Select Agent:</label>
+<select id="agentSelect" onchange="loadSystemMessage()"></select>
+
+<h3>Description:</h3>
+<textarea id="descriptionBox" placeholder="Enter a short description of the assistant..."></textarea>
+
+<h3>System Message:</h3>
+<textarea id="systemMessageBox" placeholder="Enter the system message the agent uses..."></textarea><br>
+
+<button onclick="updateSystemMessage()">Update Message</button>
+<button onclick="deleteAgent()">Delete Agent</button>
+
+
+<script>
+    async function loadAgents() {
+        const res = await fetch('/agents');
+        const agents = await res.json();
+        const select = document.getElementById("agentSelect");
+        select.innerHTML = "";
+        agents.forEach(name => {
+            let opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        });
+        loadSystemMessage(); // Load first agent's data
+    }
+
+    async function loadSystemMessage() {
+        const name = document.getElementById("agentSelect").value;
+        const res = await fetch('/agent_load', {
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_name: name })
+        });
+        const data = await res.json();
+        document.getElementById("systemMessageBox").value = data.system_message;
+        document.getElementById("descriptionBox").value = data.description || "";
+    }
+
+    async function updateSystemMessage() {
+        const name = document.getElementById("agentSelect").value;
+        const msg = document.getElementById("systemMessageBox").value;
+        const desc = document.getElementById("descriptionBox").value;
+        await fetch('/agent_save', {
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_name: name, system_message: msg, description: desc })
+        });
+        alert("Updated!");
+    }
+    async function deleteAgent() {
+        const name = document.getElementById("agentSelect").value;
+        if (!name) {
+            alert("No agent selected.");
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+        const res = await fetch('/agent_delete', {
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_name: name })
+        });
+
+        const data = await res.json();
+
+        if (data.agents) {
+            // Refresh dropdown
+            const select = document.getElementById("agentSelect");
+            select.innerHTML = "";
+            data.agents.forEach(agent => {
+                let opt = document.createElement("option");
+                opt.value = agent;
+                opt.textContent = agent;
+                select.appendChild(opt);
+            });
+
+            if (data.agents.length > 0) {
+                loadSystemMessage();
+            } else {
+                document.getElementById("systemMessageBox").value = "";
+                document.getElementById("descriptionBox").value = "";
+            }
+
+            alert(`Agent "${name}" deleted.`);
+        } else {
+            alert("Error: " + (data.error || "Unknown error."));
+        }
+    }
+
+    loadAgents();
+</script>
+</body>
+</html>
