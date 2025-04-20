@@ -246,6 +246,9 @@ def delete_agent():
 
 @app.route("/agents", methods=["GET"])
 def list_agents():
+    if not os.path.exists(AGENT_CONFIG_PATH):
+        with open(AGENT_CONFIG_PATH, "w") as f:
+            json.dump([], f)
     with open(AGENT_CONFIG_PATH, "r") as f:
         data = json.load(f)
     return jsonify([a["name"] for a in data])
